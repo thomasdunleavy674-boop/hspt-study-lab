@@ -84,11 +84,8 @@ if (
                 "I couldn't generate a reply. Please try again."
             )
 
-        except Exception:
-            answer = (
-                "Sorry, I couldn't connect to Gemini. "
-                "Check the GEMINI_API_KEY secret in Streamlit Settings "
-                "and make sure your API key has access."
+        except Exception as e:
+    answer = f"Gemini connection error: {type(e).__name__}: {e}"
             )
 
         st.session_state.ai_messages.append(
