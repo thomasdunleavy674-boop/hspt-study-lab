@@ -20,6 +20,7 @@ main{max-width:1180px;margin:auto;padding:16px 22px 50px}.hero{padding:28px;bord
 .hidden{display:none!important}.tutor-msgs{height:290px;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:10px 2px}.msg{max-width:95%;padding:11px 13px;border-radius:13px;background:#202d4a;font-size:14px;white-space:pre-wrap}.msg.user{align-self:flex-end;background:#244c63}.msg.bot{align-self:flex-start}.chatrow{display:flex;gap:8px}.chatrow input{min-width:0;flex:1}.field,input,textarea,select{font:inherit;background:#0c1428;color:var(--text);border:1px solid #344568;border-radius:11px;padding:11px 12px;width:100%;outline:none}.field:focus,input:focus,textarea:focus{border-color:var(--blue)}label{display:block;font-size:12px;color:var(--muted);margin:10px 0 5px}.small{font-size:12px;color:var(--muted)}.warning{border:1px solid #75613b;background:#2c271c;color:#ffe4a7;border-radius:12px;padding:12px;font-size:12px;margin:12px 0}.resultbig{font-size:45px;font-weight:850;letter-spacing:-2px}.topicrow{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);padding:9px 0;font-size:14px}.footer{color:#7785a5;text-align:center;font-size:12px;padding:24px}
 @media(max-width:850px){.hero{grid-template-columns:1fr}.hero-art{display:none}.layout{grid-template-columns:1fr}.section-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:500px){header{padding:20px 14px 10px}main{padding:12px 14px 35px}.hero{padding:21px}.panel{padding:16px}.section-grid{grid-template-columns:1fr}.stats{gap:7px}.stat{padding:10px}.stat strong{font-size:22px}}
+aside .warning, aside details{display:none!important}
 </style>
 </head>
 <body>
@@ -144,11 +145,55 @@ function exitQuiz(){document.getElementById("quizArea").classList.add("hidden");
 function resetProgress(){if(confirm("Clear saved scores from this browser?")){history={done:0,correct:0,tests:0,topics:{}};saveHistory()}}
 function addMsg(txt,who){let d=document.createElement("div");d.className="msg "+who;d.textContent=txt;let m=document.getElementById("chatMsgs");m.appendChild(d);m.scrollTop=m.scrollHeight}
 function localTutor(input){let t=input.toLowerCase();let q=activeQuestions[idx];if(/current question|this question|explain (this|it)|why/.test(t)&&q)return `Current question: ${q.q}\n\nThink about the key idea before looking at the answer. ${q.why}\n\nWant to try a similar example? Ask me for one.`;if(/hint/.test(t)){if(/fraction/.test(t))return "Hint: Find a common denominator before adding or subtracting fractions. For example, thirds and fourths can both be written in twelfths.";if(/percent/.test(t))return "Hint: Change the percent to a decimal by dividing by 100, then multiply by the number.";if(/equation|solve|algebra/.test(t))return "Hint: Undo operations in reverse order. Keep both sides balanced, and isolate the variable.";if(/analogy/.test(t))return "Hint: Say the relationship out loud (such as opposite, part-to-whole, or creator-to-creation), then find the same relationship in the choices.";return "Hint: First identify exactly what the question asks. Eliminate choices that clearly do not fit, then compare the remaining options."}if(/fraction/.test(t))return "Fractions tip: To add or subtract, use a common denominator. To multiply, multiply across. To divide, multiply by the reciprocal.";if(/percent/.test(t))return "Percent tip: x% of a number means (x ÷ 100) × that number. Example: 25% of 60 = 0.25 × 60 = 15.";if(/analogy|verbal|vocab|synonym|antonym/.test(t))return "Verbal tip: For analogies, describe the relationship between the first pair in a short phrase. For vocabulary, learn a word with a synonym, an antonym, and a sample sentence.";if(/reading|inference|main idea/.test(t))return "Reading tip: Main idea is what the passage is mostly about. An inference is a reasonable conclusion supported by clues in the text.";if(/grammar|comma|apostrophe|subject verb/.test(t))return "Language tip: Find the sentence's subject and verb first. Check subject-verb agreement, verb tense, pronouns, punctuation, and commonly confused words.";if(/math|geometry|equation/.test(t))return "Math tip: Write down what you know, choose an operation, and check whether your answer makes sense. For geometry, sketch a quick diagram and label it.";if(/practice question|quiz me|another question/.test(t)){let s=sectionFocus||"math";let qs=bank.filter(x=>x.section===s);let x=qs[Math.floor(Math.random()*qs.length)];return `Try this ${sections.find(y=>y.id===s).name} question:\n${x.q}\nA) ${x.choices[0]}\nB) ${x.choices[1]}\nC) ${x.choices[2]}\nD) ${x.choices[3]}\n\nReply A, B, C, or D. (This mini-chat does not automatically grade that reply.)`}return "I can help with HSPT math, vocabulary, analogies, reading comprehension, grammar, or study strategy. Try asking: “Give me a hint for fractions,” “Explain subject-verb agreement,” or “Give me a practice question.”"}
-async function sendChat(text){addMsg(text,"user");let key=sessionStorage.getItem("hsptGeminiKey");if(key){addMsg("Thinking…","bot");let holder=document.getElementById("chatMsgs").lastChild;try{let res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system_instruction:{parts:[{text:"You are a friendly, age-appropriate HSPT tutor. Explain concepts clearly, guide the student step by step, do not claim questions are official, and do not simply give answers when a hint would teach more. Be concise."}]},contents:[{role:"user",parts:[{text:text+(activeQuestions[idx]?"\nCurrent practice question context: "+activeQuestions[idx].q:"")}]}]})});let data=await res.json();let answer=data.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("\n");holder.textContent=answer||("Gemini request did not return a reply. "+(data.error?.message||"Check your key and its access limits."));}catch(e){holder.textContent="Could not reach Gemini. Check your internet connection and API key, or clear the key to use the built-in tutor."}}else addMsg(localTutor(text),"bot")}
+function sendChat(text){
+  addMsg(text,"user");
+  addMsg("Thinking…","bot");
+  const requestId = String(Date.now()) + "-" + Math.random().toString(36).slice(2);
+  window.parent.postMessage({
+    isStreamlitMessage: true,
+    type: "streamlit:setComponentValue",
+    value: { type: "ai_request", id: requestId, text: text },
+    dataType: "json"
+  }, "*");
+}
 document.getElementById("chatForm").addEventListener("submit",e=>{e.preventDefault();let input=document.getElementById("chatInput");let val=input.value.trim();if(val){input.value="";sendChat(val)}});
 function saveKey(){let k=document.getElementById("apiKey").value.trim();if(!k){alert("Paste your own Gemini API key first.");return}sessionStorage.setItem("hsptGeminiKey",k);alert("Key enabled for this browser tab. It is not saved in the site files. Keep it private.");document.getElementById("apiKey").value=""}
 function clearKey(){sessionStorage.removeItem("hsptGeminiKey");document.getElementById("apiKey").value="";alert("Gemini key cleared from this tab.")}
-renderSections();updateStats();
+let lastAIReplyId = "";
+
+window.addEventListener("message", function(event) {
+  const data = event.data;
+  if (!data || data.type !== "streamlit:render" || !data.args) return;
+  const args = data.args;
+  if (args.ai_reply_id && args.ai_reply_id !== lastAIReplyId) {
+    lastAIReplyId = args.ai_reply_id;
+    const messages = document.getElementById("chatMsgs");
+    const last = messages.lastElementChild;
+    if (last && last.classList.contains("bot") && last.textContent === "Thinking…") {
+      last.remove();
+    }
+    if (args.ai_reply) addMsg(args.ai_reply, "bot");
+  }
+});
+
+window.parent.postMessage({
+  isStreamlitMessage: true,
+  type: "streamlit:componentReady",
+  apiVersion: 1
+}, "*");
+
+function updateComponentHeight() {
+  window.parent.postMessage({
+    isStreamlitMessage: true,
+    type: "streamlit:setFrameHeight",
+    height: document.documentElement.scrollHeight
+  }, "*");
+}
+
+renderSections();
+updateStats();
+updateComponentHeight();
+window.addEventListener("resize", updateComponentHeight);
 </script>
 </body>
 </html>
