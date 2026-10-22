@@ -2,97 +2,85 @@
 import streamlit as st
 import streamlit.components.v1 as components
 from pathlib import Path
-from google import genai
+import json
+import uuid
 
 st.set_page_config(
     page_title="HSPT Study Lab",
-    page_icon="✦",
+    page_icon="📚",
     layout="wide",
-    initial_sidebar_state="collapsed",
 )
 
-# Use the existing website as a connected Streamlit component.
+# Load the website files
 site_folder = Path(__file__).parent
+html_file = site_folder / "index.html"
 
-if not (site_folder / "index.html").exists():
-    st.error("index.html must be in the same repository as app.py.")
+if not html_file.exists():
+    st.error("Couldn't find index.html. Make sure it is in the same GitHub folder as app.py.")
     st.stop()
 
-website = components.declare_component(
+# Create the website component
+hspt_study_lab = components.declare_component(
     "hspt_study_lab",
     path=str(site_folder),
 )
 
-if "ai_messages" not in st.session_state:
-    st.session_state.ai_messages = []
+# Gemini AI tutor
+def get_gemini_reply(question):
+    try:
+        from google import genai
+
+        api_key = st.secrets.get("GEMINI_API_KEY", "")
+
+        if not api_key:
+            return (
+                "The AI tutor is not configured yet. "
+                "Add GEMINI_API_KEY in your Streamlit app's Secrets settings."
+            )
+
+        client = genai.Client(api_key=api_key)
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=question,
+        )
+
+        if response.text:
+            return response.text
+
+        return "Gemini returned an empty answer. Please try again."
+
+    except Exception as e:
+        # Show the actual error so we can diagnose it.
+        return f"Gemini connection error: {type(e).__name__}: {e}"
+
+
+# Receive requests from the website
+if "ai_replies" not in st.session_state:
+    st.session_state.ai_replies = {}
 
 if "last_request_id" not in st.session_state:
     st.session_state.last_request_id = None
 
-if "ai_reply" not in st.session_state:
-    st.session_state.ai_reply = ""
-
-if "ai_reply_id" not in st.session_state:
-    st.session_state.ai_reply_id = ""
-
-# Send replies back to the tutor box inside index.html.
-request = website(
-    ai_reply=st.session_state.ai_reply,
-    ai_reply_id=st.session_state.ai_reply_id,
-    key="hspt_site",
+# Render the HTML website
+result = hspt_study_lab(
+    ai_reply=st.session_state.get("last_ai_reply", ""),
+    ai_reply_id=st.session_state.get("last_ai_reply_id", ""),
+    default=None,
+    key="hspt_study_lab_component",
 )
 
-# Handle messages sent from the website's tutor box.
-if (
-    isinstance(request, dict)
-    and request.get("type") == "ai_request"
-    and request.get("id") != st.session_state.last_request_id
-):
-    request_id = request.get("id")
-    prompt = str(request.get("text", "")).strip()
+# Process AI tutor messages from the component
+if isinstance(result, dict) and result.get("type") == "ai_request":
+    request_id = result.get("id", str(uuid.uuid4()))
+    question = str(result.get("text", "")).strip()
 
-    if request_id and prompt:
+    if question and request_id != st.session_state.last_request_id:
         st.session_state.last_request_id = request_id
-        st.session_state.ai_messages.append(
-            {"role": "user", "content": prompt}
-        )
 
-        try:
-            client = genai.Client(
-                api_key=st.secrets["GEMINI_API_KEY"]
-            )
+        with st.spinner("AI tutor is thinking..."):
+            answer = get_gemini_reply(question)
 
-            recent = st.session_state.ai_messages[-12:]
-            conversation = "\n".join(
-                f'{m["role"].upper()}: {m["content"]}'
-                for m in recent
-            )
-
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=(
-                    "You are a friendly, age-appropriate HSPT study tutor. "
-                    "Help the student learn vocabulary, verbal skills, "
-                    "quantitative reasoning, reading, math, and grammar. "
-                    "Explain clearly with examples and step-by-step guidance. "
-                    "Be concise. Do not claim practice questions are official.\n\n"
-                    + conversation
-                ),
-            )
-
-            answer = response.text or (
-                "I couldn't generate a reply. Please try again."
-            )
-
-        except Exception as e:
-    answer = f"Gemini connection error: {type(e).__name__}: {e}"
-            )
-
-        st.session_state.ai_messages.append(
-            {"role": "assistant", "content": answer}
-        )
-
-        st.session_state.ai_reply = answer
-        st.session_state.ai_reply_id = str(request_id)
+        st.session_state.last_ai_reply = answer
+        st.session_state.last_ai_reply_id = request_id
         st.rerun()
-
