@@ -11,15 +11,25 @@ st.set_page_config(
     layout="wide",
 )
 
-# Find the website
+# Require Google sign-in before showing the app
+if not st.user.is_logged_in:
+    st.title("📚 HSPT Study Lab")
+    st.write("Sign in with Google to access your study tools.")
+    st.button("🔐 Sign in with Google", on_click=st.login)
+    st.stop()
+
+# Signed-in user's account controls
+with st.sidebar:
+    st.write(f"Signed in as: {st.user.get('email', 'Google user')}")
+    if st.button("Sign out"):
+        st.logout()
+
+# Find the website files
 site_folder = Path(__file__).parent
 html_file = site_folder / "index.html"
 
 if not html_file.exists():
-    st.error(
-        "Couldn't find index.html. "
-        "Make sure it is in the same folder as app.py."
-    )
+    st.error("index.html must be in the same folder as app.py.")
     st.stop()
 
 # Create the website component
@@ -30,18 +40,17 @@ hspt_study_lab = components.declare_component(
 
 
 def get_gemini_reply(question):
-    """Try each model in order until one successfully answers."""
-
     api_key = st.secrets.get("GEMINI_API_KEY", "")
 
     if not api_key:
-        return (
-            "AI tutor setup is incomplete. "
-            "Add GEMINI_API_KEY in Streamlit app Secrets."
-        )
+        return "AI tutor setup is incomplete. Check Streamlit Secrets."
 
-    client = genai.Client(api_key=api_key)
+    try:
+        client = genai.Client(api_key=api_key)
+    except Exception as e:
+        return f"Could not initialize Gemini: {type(e).__name__}: {e}"
 
+    # Try models in order until one works
     models = [
         "gemini-3.8-flash",
         "gemini-3.6-flash",
@@ -67,15 +76,13 @@ def get_gemini_reply(question):
                 f"{model}: {type(e).__name__}: {e}"
             )
 
-    # Only show this if every model failed.
     return (
-        "I couldn't get an answer from any available AI model.\n\n"
-        "Models tried:\n"
+        "I couldn't get an answer from the available models.\n\n"
         + "\n".join(errors)
     )
 
 
-# Keep AI tutor responses between Streamlit reruns
+# Keep tutor responses between reruns
 if "last_ai_reply" not in st.session_state:
     st.session_state.last_ai_reply = ""
 
@@ -85,7 +92,6 @@ if "last_ai_reply_id" not in st.session_state:
 if "last_request_id" not in st.session_state:
     st.session_state.last_request_id = None
 
-
 # Display the website
 result = hspt_study_lab(
     ai_reply=st.session_state.last_ai_reply,
@@ -94,7 +100,7 @@ result = hspt_study_lab(
     key="hspt_study_lab_component",
 )
 
-# Handle AI tutor requests from the website
+# Handle AI tutor requests
 if isinstance(result, dict) and result.get("type") == "ai_request":
     request_id = result.get("id") or str(uuid.uuid4())
     question = str(result.get("text", "")).strip()
@@ -102,10 +108,9 @@ if isinstance(result, dict) and result.get("type") == "ai_request":
     if question and request_id != st.session_state.last_request_id:
         st.session_state.last_request_id = request_id
 
-        with st.spinner("AI tutor is trying available models..."):
+        with st.spinner("AI tutor is thinking..."):
             answer = get_gemini_reply(question)
 
         st.session_state.last_ai_reply = answer
         st.session_state.last_ai_reply_id = request_id
         st.rerun()
-
