@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -192,6 +193,8 @@ function updateComponentHeight() {
 
 renderSections();
 updateStats();
+// Open the practice test immediately so a question is visible on page load.
+startFullTest();
 updateComponentHeight();
 window.addEventListener("resize", updateComponentHeight);
 </script>
