@@ -129,6 +129,8 @@ const bank = [
 ];
 let mode="study", activeQuestions=[], idx=0, answers={}, checked={}, sectionFocus=null;
 let generationPending=false;
+let usingFallbackQuestions=false;
+let fallbackNotice="";
 let seenGenerated=JSON.parse(localStorage.getItem("hsptSeenGenerated")||"[]");
 let history=JSON.parse(localStorage.getItem("hsptLabHistory")||'{"done":0,"correct":0,"tests":0,"topics":{}}');
 function saveHistory(){localStorage.setItem("hsptLabHistory",JSON.stringify(history));updateStats()}
@@ -139,17 +141,26 @@ function requestGeneratedQuestions(section, count){
   generationPending=true;
   mode=section ? "study" : "test";
   sectionFocus=section || null;
+  // Always start with the built-in question bank immediately. AI is an upgrade,
+  // never a requirement for the quiz to work.
+  let pool = section ? bank.filter(q=>q.section===section) : [...bank];
+  pool = [...pool].sort(()=>Math.random()-0.5);
+  activeQuestions = pool.slice(0, Math.min(count, pool.length));
+  if (!activeQuestions.length) activeQuestions = [...bank].slice(0, Math.min(count, bank.length));
+  idx=0; answers={}; checked={};
+  usingFallbackQuestions=true;
+  fallbackNotice="Loading fresh AI questions in the background. Your practice quiz works either way.";
   document.getElementById("sectionGrid").parentElement.classList.add("hidden");
   document.getElementById("resultArea").classList.add("hidden");
-  const area=document.getElementById("quizArea"); area.classList.remove("hidden");
-  area.innerHTML='<div class="question"><h4>✨ Creating fresh HSPT practice questions…</h4><p class="sub">This can take a few seconds.</p></div>';
+  showQuiz();
   const id=String(Date.now())+"-"+Math.random().toString(36).slice(2);
   window.parent.postMessage({isStreamlitMessage:true,type:"streamlit:setComponentValue",value:{type:"generate_questions",id:id,section:section||"mixed",count:count,avoid:seenGenerated.slice(-30)},dataType:"json"},"*");
+  updateComponentHeight();
 }
 function startFullTest(){requestGeneratedQuestions(null,50)}
 function startSection(id){requestGeneratedQuestions(id,10)}
 function showQuiz(){document.getElementById("sectionGrid").parentElement.classList.add("hidden");document.getElementById("resultArea").classList.add("hidden");document.getElementById("quizArea").classList.remove("hidden");renderQuestion()}
-function renderQuestion(){let q=activeQuestions[idx],sec=sections.find(s=>s.id===q.section);let area=document.getElementById("quizArea");let wasChecked=checked[idx];area.innerHTML=`<div class="qtop"><span>${mode==="test"?"FULL PRACTICE TEST":"SECTION PRACTICE"} · ${sec.name}</span><span>Question ${idx+1} of ${activeQuestions.length}</span></div><div class="progressbar"><div style="width:${(idx+1)/activeQuestions.length*100}%"></div></div><div class="question"><h4>${q.q}</h4><div class="choices">${q.choices.map((c,i)=>`<button class="choice ${answers[idx]===i?"selected":""} ${wasChecked&&i===q.a?"correct":""} ${wasChecked&&answers[idx]===i&&i!==q.a?"wrong":""}" ${wasChecked?"disabled":""} onclick="choose(${i})"><span class="letter">${"ABCD"[i]}</span><span>${c}</span></button>`).join("")}</div>${wasChecked?`<div class="feedback ${answers[idx]===q.a?"good":"bad"}"><b>${answers[idx]===q.a?"Correct!":"Not quite."}</b> ${q.why}</div>`:""}<div class="qactions"><button class="ghost" onclick="exitQuiz()">Exit</button><div style="display:flex;gap:8px"><button class="secondary" ${answers[idx]===undefined||wasChecked?"disabled":""} onclick="checkAnswer()">Check answer</button><button class="primary" ${!wasChecked?"disabled":""} onclick="nextQuestion()">${idx===activeQuestions.length-1?"See results":"Next"}</button></div></div></div>`}
+function renderQuestion(){if(!activeQuestions.length)return;let q=activeQuestions[idx],sec=sections.find(s=>s.id===q.section)||sections[0];let area=document.getElementById("quizArea");let wasChecked=checked[idx];area.innerHTML=(usingFallbackQuestions?`<div class="warning"><b>Practice is ready.</b> ${fallbackNotice}</div>`:"")+`<div class="qtop"><span>${mode==="test"?"FULL PRACTICE TEST":"SECTION PRACTICE"} · ${sec.name}</span><span>Question ${idx+1} of ${activeQuestions.length}</span></div><div class="progressbar"><div style="width:${(idx+1)/activeQuestions.length*100}%"></div></div><div class="question"><h4>${q.q}</h4><div class="choices">${q.choices.map((c,i)=>`<button class="choice ${answers[idx]===i?"selected":""} ${wasChecked&&i===q.a?"correct":""} ${wasChecked&&answers[idx]===i&&i!==q.a?"wrong":""}" ${wasChecked?"disabled":""} onclick="choose(${i})"><span class="letter">${"ABCD"[i]}</span><span>${c}</span></button>`).join("")}</div>${wasChecked?`<div class="feedback ${answers[idx]===q.a?"good":"bad"}"><b>${answers[idx]===q.a?"Correct!":"Not quite."}</b> ${q.why}</div>`:""}<div class="qactions"><button class="ghost" onclick="exitQuiz()">Exit</button><div style="display:flex;gap:8px"><button class="secondary" ${answers[idx]===undefined||wasChecked?"disabled":""} onclick="checkAnswer()">Check answer</button><button class="primary" ${!wasChecked?"disabled":""} onclick="nextQuestion()">${idx===activeQuestions.length-1?"See results":"Next"}</button></div></div></div>`}
 function choose(i){if(checked[idx])return;answers[idx]=i;renderQuestion()}
 function checkAnswer(){if(answers[idx]===undefined)return;let q=activeQuestions[idx];checked[idx]=true;history.done++;let good=answers[idx]===q.a;if(good)history.correct++;if(!history.topics[q.section])history.topics[q.section]={done:0,correct:0};history.topics[q.section].done++;if(good)history.topics[q.section].correct++;saveHistory();renderQuestion()}
 function nextQuestion(){if(idx<activeQuestions.length-1){idx++;renderQuestion()}else showResults()}
@@ -188,21 +199,29 @@ window.addEventListener("message", function(event) {
         const detail = args.generation_error || "The server returned an empty question list.";
         throw new Error(detail);
       }
-      activeQuestions = generated.map(q => ({
+      const valid = generated.filter(q => q && typeof q.question === "string" && Array.isArray(q.choices) && q.choices.length === 4 && Number.isInteger(Number(q.answer)) && Number(q.answer) >= 0 && Number(q.answer) <= 3);
+      if (!valid.length) throw new Error("AI returned questions in an unexpected format.");
+      activeQuestions = valid.map(q => ({
         section: q.section || sectionFocus || "math",
         q: q.question,
-        choices: q.choices,
+        choices: q.choices.map(String),
         a: Number(q.answer),
         why: q.explanation || "Review the key idea and eliminate choices that do not fit."
       }));
+      usingFallbackQuestions=false; fallbackNotice="";
       activeQuestions.forEach(q => { if (q.q) seenGenerated.push(q.q); });
       seenGenerated = seenGenerated.slice(-100);
       localStorage.setItem("hsptSeenGenerated", JSON.stringify(seenGenerated));
       idx = 0; answers = {}; checked = {};
       showQuiz(); updateComponentHeight();
     } catch (e) {
-      const message = String(e.message || e).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      document.getElementById("quizArea").innerHTML = `<div class="question"><h4>Could not create questions</h4><p class="sub">${message}</p><p class="sub">Check the Streamlit app logs and your Gemini API key/model settings, then try again.</p><button class="primary" onclick="startFullTest()">Try again</button></div>`;
+      // Keep the already-rendered built-in quiz. Never replace it with an error screen.
+      usingFallbackQuestions=true;
+      const raw = String((args.generation_error || e.message || e) );
+      fallbackNotice = /429|quota|RESOURCE_EXHAUSTED|rate.?limit/i.test(raw)
+        ? "AI has reached its request limit right now, so these built-in practice questions will stay available. Try fresh AI questions later."
+        : "AI questions are temporarily unavailable, so these built-in practice questions will stay available.";
+      showQuiz();
       updateComponentHeight();
     }
   }
