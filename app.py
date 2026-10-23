@@ -90,12 +90,14 @@ if "last_ai_reply_id" not in st.session_state: st.session_state.last_ai_reply_id
 if "last_request_id" not in st.session_state: st.session_state.last_request_id = None
 if "generated_questions" not in st.session_state: st.session_state.generated_questions = "[]"
 if "generated_questions_id" not in st.session_state: st.session_state.generated_questions_id = ""
+if "generation_error" not in st.session_state: st.session_state.generation_error = ""
 
 result = hspt_study_lab(
     ai_reply=st.session_state.last_ai_reply,
     ai_reply_id=st.session_state.last_ai_reply_id,
     generated_questions=st.session_state.generated_questions,
     generated_questions_id=st.session_state.generated_questions_id,
+    generation_error=st.session_state.generation_error,
     default=None,
     key="hspt_study_lab_component",
 )
@@ -108,11 +110,13 @@ if isinstance(result, dict):
             with st.spinner("Creating original HSPT questions..."):
                 questions = make_questions(str(result.get("section", "mixed")), int(result.get("count", 10)), result.get("avoid", []))
             st.session_state.generated_questions = json.dumps(questions)
+            st.session_state.generation_error = ""
             st.session_state.generated_questions_id = request_id
         except Exception as exc:
             st.session_state.last_ai_reply = f"Question generation failed: {exc}"
             st.session_state.last_ai_reply_id = request_id
             st.session_state.generated_questions = "[]"
+            st.session_state.generation_error = f"{type(exc).__name__}: {exc}"
             st.session_state.generated_questions_id = request_id
         st.rerun()
     elif result.get("type") == "ai_request" and request_id != st.session_state.last_request_id:
