@@ -173,23 +173,37 @@ document.getElementById("chatForm").addEventListener("submit",e=>{e.preventDefau
 function saveKey(){let k=document.getElementById("apiKey").value.trim();if(!k){alert("Paste your own Gemini API key first.");return}sessionStorage.setItem("hsptGeminiKey",k);alert("Key enabled for this browser tab. It is not saved in the site files. Keep it private.");document.getElementById("apiKey").value=""}
 function clearKey(){sessionStorage.removeItem("hsptGeminiKey");document.getElementById("apiKey").value="";alert("Gemini key cleared from this tab.")}
 let lastAIReplyId = "";
+let lastGeneratedQuestionsId = "";
 
 window.addEventListener("message", function(event) {
   const data = event.data;
   if (!data || data.type !== "streamlit:render" || !data.args) return;
   const args = data.args;
-  if (args.generated_questions_id && args.generated_questions_id !== lastAIReplyId) {
-    lastAIReplyId=args.generated_questions_id;
-    generationPending=false;
+  if (args.generated_questions_id && args.generated_questions_id !== lastGeneratedQuestionsId) {
+    lastGeneratedQuestionsId = args.generated_questions_id;
+    generationPending = false;
     try {
-      const generated=JSON.parse(args.generated_questions || "[]");
-      if (!Array.isArray(generated) || !generated.length) throw new Error("No questions returned");
-      activeQuestions=generated.map(q=>({section:q.section||sectionFocus||"math",q:q.question,choices:q.choices,a:Number(q.answer),why:q.explanation}));
-      activeQuestions.forEach(q=>{seenGenerated.push(q.q);});
-      seenGenerated=seenGenerated.slice(-100); localStorage.setItem("hsptSeenGenerated",JSON.stringify(seenGenerated));
-      idx=0;answers={};checked={};showQuiz();updateComponentHeight();
-    } catch(e) {
-      document.getElementById("quizArea").innerHTML='<div class="question"><h4>Could not create questions</h4><p class="sub">Check your Gemini model/API settings in Streamlit Secrets, then try again.</p><button class="primary" onclick="startFullTest()">Try again</button></div>';
+      const generated = JSON.parse(args.generated_questions || "[]");
+      if (!Array.isArray(generated) || !generated.length) {
+        const detail = args.generation_error || "The server returned an empty question list.";
+        throw new Error(detail);
+      }
+      activeQuestions = generated.map(q => ({
+        section: q.section || sectionFocus || "math",
+        q: q.question,
+        choices: q.choices,
+        a: Number(q.answer),
+        why: q.explanation || "Review the key idea and eliminate choices that do not fit."
+      }));
+      activeQuestions.forEach(q => { if (q.q) seenGenerated.push(q.q); });
+      seenGenerated = seenGenerated.slice(-100);
+      localStorage.setItem("hsptSeenGenerated", JSON.stringify(seenGenerated));
+      idx = 0; answers = {}; checked = {};
+      showQuiz(); updateComponentHeight();
+    } catch (e) {
+      const message = String(e.message || e).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      document.getElementById("quizArea").innerHTML = `<div class="question"><h4>Could not create questions</h4><p class="sub">${message}</p><p class="sub">Check the Streamlit app logs and your Gemini API key/model settings, then try again.</p><button class="primary" onclick="startFullTest()">Try again</button></div>`;
+      updateComponentHeight();
     }
   }
   if (args.ai_reply_id && args.ai_reply_id !== lastAIReplyId) {
