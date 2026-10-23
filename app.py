@@ -28,7 +28,7 @@ if not (site_folder / "index.html").exists():
 
 hspt_study_lab = components.declare_component("hspt_study_lab", path=str(site_folder))
 
-MODELS = ["gemini-3.8-flash", "gemini-2.5-flash"]
+MODELS = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
 
 def gemini_text(prompt):
     api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -115,6 +115,7 @@ if isinstance(result, dict):
         except Exception as exc:
             st.session_state.last_ai_reply = f"Question generation failed: {exc}"
             st.session_state.last_ai_reply_id = request_id
+            # The browser already has a built-in question bank and keeps it visible.
             st.session_state.generated_questions = "[]"
             st.session_state.generation_error = f"{type(exc).__name__}: {exc}"
             st.session_state.generated_questions_id = request_id
