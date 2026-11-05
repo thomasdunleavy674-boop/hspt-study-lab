@@ -31,7 +31,7 @@ aside .warning, aside details{display:none!important}
 <main>
 <section class="hero">
   <div><div class="eyebrow">Prepare with a plan</div><h2>Build confidence.<br>One question at a time.</h2><p>Practice five HSPT subject areas, learn from explanations, and use the tutor panel to talk through tricky questions. Your progress stays in this browser.</p>
-  <div class="actions"><button class="primary" onclick="startFullTest()">Start 50-question test</button><button class="secondary" onclick="showStudy()">Study a section</button></div></div>
+  <div class="actions"><button class="primary" onclick="startFullTest()">Start 50-question test</button><button class="secondary" onclick="showStudy()">Study a section</button><button class="secondary" onclick="openVocabulary()">Vocabulary builder</button></div></div>
   <div class="hero-art"><div class="orbit"><span>✦</span></div></div>
 </section>
 <div class="stats" style="margin-top:16px">
@@ -45,6 +45,7 @@ aside .warning, aside details{display:none!important}
   <div class="section-grid" id="sectionGrid"></div>
   <div id="quizArea" class="hidden"></div>
   <div id="resultArea" class="hidden"></div>
+  <div id="vocabArea" class="hidden"></div>
 </section>
 <aside class="panel">
   <h3>AI Study Tutor</h3><p class="sub">Ask for a hint, an explanation, or a fresh practice question.</p>
@@ -75,6 +76,53 @@ const sections = [
  {id:"math",name:"Mathematics",desc:"Fractions, equations, geometry, percents, word problems",icon:"＋"},
  {id:"language",name:"Language",desc:"Grammar, punctuation, sentence structure, usage",icon:"Aa"}
 ];
+
+const wordParts = {
+ prefixes: [
+  ["a- / an-","not; without","atypical = not typical; anonymous = without a name"],
+  ["bene-","good; well","beneficial = producing good results"],
+  ["bi-","two","bicycle = a vehicle with two wheels"],
+  ["circum-","around","circumference = the distance around a circle"],
+  ["contra- / counter-","against; opposite","contradict = to speak against a statement"],
+  ["de-","down; away; reverse","decrease = to become less"],
+  ["inter-","between; among","interact = to act with one another"],
+  ["mis-","wrongly; badly","misinterpret = to understand incorrectly"],
+  ["multi-","many","multilingual = using many languages"],
+  ["pre-","before","preview = to view before"],
+  ["re-","again; back","rebuild = to build again"],
+  ["sub-","under; below","submarine = a vessel that travels underwater"],
+  ["trans-","across; through","transport = to carry across or from place to place"],
+  ["un-","not; opposite of","unusual = not usual"]
+ ],
+ suffixes: [
+  ["-able / -ible","able to be; capable of","readable = able to be read"],
+  ["-al","relating to","seasonal = relating to a season"],
+  ["-ance / -ence","state; quality; action","importance = the state of being important"],
+  ["-ful","full of","hopeful = full of hope"],
+  ["-less","without","careless = without care"],
+  ["-ment","action; process; result","agreement = the result of agreeing"],
+  ["-ness","state or quality","kindness = the quality of being kind"],
+  ["-ology","study of","biology = the study of life"],
+  ["-ous / -ious","full of; having the quality of","curious = eager to know"],
+  ["-tion / -sion","act or process","decision = the act of deciding"],
+  ["-ist","a person who practices or believes","artist = a person who creates art"],
+  ["-ize","to make or become","organize = to arrange into an orderly system"]
+ ],
+ roots: [
+  ["aud","hear","audible = able to be heard"],
+  ["dict","say; speak","predict = to say what may happen"],
+  ["ject","throw; cast","eject = to throw out"],
+  ["port","carry","portable = able to be carried"],
+  ["scrib / script","write","describe = to write or tell about"],
+  ["spect","look; see","inspect = to look at closely"],
+  ["struct","build","construct = to build"],
+  ["tele","far; distant","telephone = a device for speaking over a distance"],
+  ["vid / vis","see","visible = able to be seen"],
+  ["chron","time","chronological = arranged by time"]
+ ]
+};
+let vocabCategory="prefixes", vocabIndex=0, vocabRevealed=false;
+
 const bank = [
 {section:"verbal",q:"Which word is closest in meaning to “reluctant”?",choices:["Eager","Unwilling","Careless","Certain"],a:1,why:"Reluctant means hesitant or unwilling to do something."},
 {section:"verbal",q:"BRIEF is to LENGTHY as ANCIENT is to…",choices:["Old","Historic","Modern","Fragile"],a:2,why:"The pair expresses opposites: brief/lengthy and ancient/modern."},
@@ -166,6 +214,29 @@ function checkAnswer(){if(answers[idx]===undefined)return;let q=activeQuestions[
 function nextQuestion(){if(idx<activeQuestions.length-1){idx++;renderQuestion()}else showResults()}
 function showResults(){let total=activeQuestions.length, correct=activeQuestions.filter((q,i)=>answers[i]===q.a).length; if(mode==="test")history.tests++;saveHistory();document.getElementById("quizArea").classList.add("hidden");let r=document.getElementById("resultArea");r.classList.remove("hidden");let by=sections.map(s=>{let qs=activeQuestions.map((q,i)=>({q,i})).filter(x=>x.q.section===s.id);if(!qs.length)return "";let c=qs.filter(x=>answers[x.i]===x.q.a).length;return `<div class="topicrow"><span>${s.name}</span><b>${c}/${qs.length}</b></div>`}).join("");r.innerHTML=`<div class="eyebrow">Practice complete</div><div class="resultbig">${Math.round(correct/total*100)}%</div><h3>You got ${correct} out of ${total} correct.</h3><p class="sub">Use this as a practice checkpoint, not an official HSPT score prediction.</p><div style="margin:20px 0">${by}</div><div class="actions"><button class="primary" onclick="startFullTest()">Retake mixed test</button><button class="secondary" onclick="showStudy()">Choose another section</button></div><h3 style="margin-top:24px">Review missed questions</h3>${activeQuestions.map((q,i)=>answers[i]===q.a?"":`<div class="question"><div class="qtop">${sections.find(s=>s.id===q.section).name} · Question ${i+1}</div><h4>${q.q}</h4><p><b>Answer:</b> ${"ABCD"[q.a]}. ${q.choices[q.a]}</p><p class="sub">${q.why}</p></div>`).join("")||"<p>Excellent — no missed questions in this set!</p>"}`}
 function exitQuiz(){document.getElementById("quizArea").classList.add("hidden");document.getElementById("resultArea").classList.add("hidden");document.getElementById("sectionGrid").classList.remove("hidden")}
+
+function openVocabulary(){
+ document.getElementById("sectionGrid").classList.add("hidden");
+ document.getElementById("quizArea").classList.add("hidden");
+ document.getElementById("resultArea").classList.add("hidden");
+ const area=document.getElementById("vocabArea"); area.classList.remove("hidden");
+ vocabCategory="prefixes"; vocabIndex=0; vocabRevealed=false; renderVocabulary(); updateComponentHeight();
+}
+function renderVocabulary(){
+ const area=document.getElementById("vocabArea"), list=wordParts[vocabCategory], item=list[vocabIndex%list.length];
+ area.innerHTML=`<div class="eyebrow">Vocabulary builder</div><h3>Learn word parts. Unlock word meanings.</h3><p class="sub">Recognizing prefixes, suffixes, and roots can help you work out unfamiliar vocabulary in context.</p>
+ <div class="actions"><button class="${vocabCategory==='prefixes'?'primary':'secondary'}" onclick="setVocabCategory('prefixes')">Prefixes</button><button class="${vocabCategory==='suffixes'?'primary':'secondary'}" onclick="setVocabCategory('suffixes')">Suffixes</button><button class="${vocabCategory==='roots'?'primary':'secondary'}" onclick="setVocabCategory('roots')">Root words</button></div>
+ <div class="question" style="margin-top:16px"><div class="qtop">${vocabCategory.toUpperCase()} · ${vocabIndex+1} OF ${list.length}</div><div class="progressbar"><div style="width:${(vocabIndex+1)/list.length*100}%"></div></div><h2 style="font-size:32px;margin:18px 0 8px">${item[0]}</h2>${vocabRevealed?`<h4 style="color:var(--blue)">${item[1]}</h4><p>${item[2]}</p>`:`<p class="sub">Try to remember the meaning before revealing it.</p>`}<div class="actions"><button class="secondary" onclick="${vocabRevealed?'hideVocabMeaning()':'revealVocabMeaning()'}">${vocabRevealed?'Hide meaning':'Reveal meaning'}</button><button class="primary" onclick="nextVocab()">${vocabIndex===list.length-1?'Start again':'Next word part'}</button></div></div>
+ <p class="sub" style="margin-top:14px">Study tip: When you meet an unfamiliar word, separate its prefix, root, and suffix, then use the sentence to check your guess.</p>
+ <button class="ghost" onclick="exitVocabulary()">← Back to study sections</button>`;
+ updateComponentHeight();
+}
+function setVocabCategory(category){vocabCategory=category;vocabIndex=0;vocabRevealed=false;renderVocabulary()}
+function revealVocabMeaning(){vocabRevealed=true;renderVocabulary()}
+function hideVocabMeaning(){vocabRevealed=false;renderVocabulary()}
+function nextVocab(){const n=wordParts[vocabCategory].length;vocabIndex=(vocabIndex+1)%n;vocabRevealed=false;renderVocabulary()}
+function exitVocabulary(){document.getElementById("vocabArea").classList.add("hidden");document.getElementById("sectionGrid").classList.remove("hidden");updateComponentHeight()}
+
 function resetProgress(){if(confirm("Clear saved scores from this browser?")){history={done:0,correct:0,tests:0,topics:{}};saveHistory()}}
 function addMsg(txt,who){let d=document.createElement("div");d.className="msg "+who;d.textContent=txt;let m=document.getElementById("chatMsgs");m.appendChild(d);m.scrollTop=m.scrollHeight}
 function localTutor(input){let t=input.toLowerCase();let q=activeQuestions[idx];if(/current question|this question|explain (this|it)|why/.test(t)&&q)return `Current question: ${q.q}\n\nThink about the key idea before looking at the answer. ${q.why}\n\nWant to try a similar example? Ask me for one.`;if(/hint/.test(t)){if(/fraction/.test(t))return "Hint: Find a common denominator before adding or subtracting fractions. For example, thirds and fourths can both be written in twelfths.";if(/percent/.test(t))return "Hint: Change the percent to a decimal by dividing by 100, then multiply by the number.";if(/equation|solve|algebra/.test(t))return "Hint: Undo operations in reverse order. Keep both sides balanced, and isolate the variable.";if(/analogy/.test(t))return "Hint: Say the relationship out loud (such as opposite, part-to-whole, or creator-to-creation), then find the same relationship in the choices.";return "Hint: First identify exactly what the question asks. Eliminate choices that clearly do not fit, then compare the remaining options."}if(/fraction/.test(t))return "Fractions tip: To add or subtract, use a common denominator. To multiply, multiply across. To divide, multiply by the reciprocal.";if(/percent/.test(t))return "Percent tip: x% of a number means (x ÷ 100) × that number. Example: 25% of 60 = 0.25 × 60 = 15.";if(/analogy|verbal|vocab|synonym|antonym/.test(t))return "Verbal tip: For analogies, describe the relationship between the first pair in a short phrase. For vocabulary, learn a word with a synonym, an antonym, and a sample sentence.";if(/reading|inference|main idea/.test(t))return "Reading tip: Main idea is what the passage is mostly about. An inference is a reasonable conclusion supported by clues in the text.";if(/grammar|comma|apostrophe|subject verb/.test(t))return "Language tip: Find the sentence's subject and verb first. Check subject-verb agreement, verb tense, pronouns, punctuation, and commonly confused words.";if(/math|geometry|equation/.test(t))return "Math tip: Write down what you know, choose an operation, and check whether your answer makes sense. For geometry, sketch a quick diagram and label it.";if(/practice question|quiz me|another question/.test(t)){return "Use the Start 50-question test button or choose Practice section to generate new AI-written questions that can be graded."}return "I can help with HSPT math, vocabulary, analogies, reading comprehension, grammar, or study strategy. Try asking: “Give me a hint for fractions,” “Explain subject-verb agreement,” or “Give me a practice question.”"}
@@ -259,3 +330,4 @@ window.addEventListener("resize", updateComponentHeight);
 </script>
 </body>
 </html>
+
